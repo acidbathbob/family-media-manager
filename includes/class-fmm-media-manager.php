@@ -417,4 +417,75 @@ class FMM_Media_Manager {
         
         return $inserted ? $wpdb->insert_id : false;
     }
+    
+    /**
+     * Get user's category permissions
+     */
+    public static function get_user_category_permissions($user_id) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'fmm_category_permissions';
+        
+        return $wpdb->get_results($wpdb->prepare(
+            "SELECT category_id FROM $table WHERE user_id = %d",
+            $user_id
+        ));
+    }
+    
+    /**
+     * Grant category permission to user
+     */
+    public static function grant_category_permission($user_id, $category_id, $granted_by) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'fmm_category_permissions';
+        
+        // Check if permission already exists
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table WHERE user_id = %d AND category_id = %d",
+            $user_id,
+            $category_id
+        ));
+        
+        if ($exists > 0) {
+            return true; // Already has permission
+        }
+        
+        $inserted = $wpdb->insert($table, array(
+            'user_id' => $user_id,
+            'category_id' => $category_id,
+            'granted_by' => $granted_by
+        ));
+        
+        return $inserted ? true : false;
+    }
+    
+    /**
+     * Revoke category permission from user
+     */
+    public static function revoke_category_permission($user_id, $category_id) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'fmm_category_permissions';
+        
+        $deleted = $wpdb->delete($table, array(
+            'user_id' => $user_id,
+            'category_id' => $category_id
+        ));
+        
+        return $deleted !== false;
+    }
+    
+    /**
+     * Check if user can access category
+     */
+    public static function user_can_access_category($user_id, $category_id) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'fmm_category_permissions';
+        
+        $count = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table WHERE user_id = %d AND category_id = %d",
+            $user_id,
+            $category_id
+        ));
+        
+        return $count > 0;
+    }
 }

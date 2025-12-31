@@ -66,16 +66,34 @@ class FMM_Installer {
             UNIQUE KEY slug (slug)
         ) $charset_collate;";
         
+        // Table for category permissions
+        $table_permissions = $wpdb->prefix . 'fmm_category_permissions';
+        $sql_permissions = "CREATE TABLE IF NOT EXISTS $table_permissions (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) NOT NULL,
+            category_id mediumint(9) NOT NULL,
+            granted_date datetime DEFAULT CURRENT_TIMESTAMP,
+            granted_by bigint(20) NOT NULL,
+            PRIMARY KEY  (id),
+            UNIQUE KEY user_category (user_id, category_id),
+            KEY user_id (user_id),
+            KEY category_id (category_id)
+        ) $charset_collate;";
+        
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql_invites);
         dbDelta($sql_media);
         dbDelta($sql_categories);
+        dbDelta($sql_permissions);
         
         // Create upload directory
         self::create_upload_directory();
         
         // Create default category
         self::create_default_category();
+        
+        // Migrate existing users to have access to all categories
+        self::migrate_category_permissions();
         
         // Set default options
         add_option('fmm_version', FMM_VERSION);
@@ -136,6 +154,44 @@ class FMM_Installer {
                 'slug' => 'uncategorized',
                 'description' => 'Default category for media files'
             ));
+        }
+    }
+    
+    /**
+     * Migrate existing users to have access to all categories
+     */
+    private static function migrate_category_permissions() {
+        global $wpdb;
+        $table_permissions = $wpdb->prefix . 'fmm_category_permissions';
+        $table_categories = $wpdb->prefix . 'fmm_categories';
+        $table_invites = $wpdb->prefix . 'fmm_invites';
+        
+        // Get all registered users
+        $registered_users = $wpdb->get_results(
+            "SELECT DISTINCT user_id FROM $table_invites WHERE status = 'registered' AND user_id IS NOT NULL"
+        );
+        
+        // Get all categories
+        $categories = $wpdb->get_results("SELECT id FROM $table_categories");
+        
+        // Grant all users access to all categories
+        foreach ($registered_users as $user) {
+            foreach ($categories as $category) {
+                // Check if permission already exists
+                $exists = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(*) FROM $table_permissions WHERE user_id = %d AND category_id = %d",
+                    $user->user_id,
+                    $category->id
+                ));
+                
+                if ($exists == 0) {
+                    $wpdb->insert($table_permissions, array(
+                        'user_id' => $user->user_id,
+                        'category_id' => $category->id,
+                        'granted_by' => 1 // System migration
+                    ));
+                }
+            }
         }
     }
 }

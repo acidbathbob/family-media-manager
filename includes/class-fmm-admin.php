@@ -12,6 +12,8 @@ class FMM_Admin {
     public static function init() {
         add_action('admin_menu', array(__CLASS__, 'add_admin_menu'));
         add_action('wp_ajax_fmm_create_category', array(__CLASS__, 'ajax_create_category'));
+        add_action('wp_ajax_fmm_grant_permission', array(__CLASS__, 'ajax_grant_permission'));
+        add_action('wp_ajax_fmm_revoke_permission', array(__CLASS__, 'ajax_revoke_permission'));
     }
     
     /**
@@ -57,6 +59,15 @@ class FMM_Admin {
         
         add_submenu_page(
             'family-media-manager',
+            'Permissions',
+            'Permissions',
+            'manage_options',
+            'fmm-permissions',
+            array(__CLASS__, 'render_permissions_page')
+        );
+        
+        add_submenu_page(
+            'family-media-manager',
             'Settings',
             'Settings',
             'manage_options',
@@ -93,6 +104,38 @@ class FMM_Admin {
         $categories = FMM_Media_Manager::get_categories();
         
         include FMM_PLUGIN_DIR . 'templates/admin/categories.php';
+    }
+    
+    /**
+     * Render permissions page
+     */
+    public static function render_permissions_page() {
+        global $wpdb;
+        $table_invites = $wpdb->prefix . 'fmm_invites';
+        
+        // Get all registered users
+        $users = $wpdb->get_results(
+            "SELECT DISTINCT u.ID, u.display_name, u.user_email, i.invited_date 
+             FROM {$wpdb->users} u 
+             INNER JOIN $table_invites i ON u.ID = i.user_id 
+             WHERE i.status = 'registered' 
+             ORDER BY u.display_name ASC"
+        );
+        
+        // Get all categories
+        $categories = FMM_Media_Manager::get_categories();
+        
+        // Get all permissions
+        $table_permissions = $wpdb->prefix . 'fmm_category_permissions';
+        $permissions = $wpdb->get_results("SELECT user_id, category_id FROM $table_permissions");
+        
+        // Build permission matrix
+        $permission_matrix = array();
+        foreach ($permissions as $perm) {
+            $permission_matrix[$perm->user_id][$perm->category_id] = true;
+        }
+        
+        include FMM_PLUGIN_DIR . 'templates/admin/permissions.php';
     }
     
     /**
@@ -133,6 +176,53 @@ class FMM_Admin {
             wp_send_json_success(array('category_id' => $result));
         } else {
             wp_send_json_error('Failed to create category');
+        }
+    }
+    
+    /**
+     * AJAX handler for granting permission
+     */
+    public static function ajax_grant_permission() {
+        check_ajax_referer('fmm_admin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        $user_id = intval($_POST['user_id']);
+        $category_id = intval($_POST['category_id']);
+        $granted_by = get_current_user_id();
+        
+        $result = FMM_Media_Manager::grant_category_permission($user_id, $category_id, $granted_by);
+        
+        if ($result) {
+            wp_send_json_success('Permission granted');
+        } else {
+            wp_send_json_error('Failed to grant permission');
+        }
+    }
+    
+    /**
+     * AJAX handler for revoking permission
+     */
+    public static function ajax_revoke_permission() {
+        check_ajax_referer('fmm_admin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        $user_id = intval($_POST['user_id']);
+        $category_id = intval($_POST['category_id']);
+        
+        $result = FMM_Media_Manager::revoke_category_permission($user_id, $category_id);
+        
+        if ($result) {
+            wp_send_json_success('Permission revoked');
+        } else {
+            wp_send_json_error('Failed to revoke permission');
         }
     }
 }

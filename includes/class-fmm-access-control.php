@@ -43,7 +43,7 @@ class FMM_Access_Control {
     /**
      * Check if user has access to media
      */
-    public static function user_has_access($user_id = null) {
+    public static function user_has_access($user_id = null, $media_id = null) {
         if ($user_id === null) {
             $user_id = get_current_user_id();
         }
@@ -72,7 +72,20 @@ class FMM_Access_Control {
             $user_id
         ));
         
-        return $invite ? true : false;
+        if (!$invite) {
+            return false;
+        }
+        
+        // If media_id is provided, check category permissions
+        if ($media_id !== null) {
+            $media = FMM_Media_Manager::get_media_by_id($media_id);
+            
+            if ($media && $media->category_id) {
+                return FMM_Media_Manager::user_can_access_category($user_id, $media->category_id);
+            }
+        }
+        
+        return true;
     }
     
     /**
@@ -86,7 +99,7 @@ class FMM_Access_Control {
         }
         
         // Check access
-        if (!self::user_has_access()) {
+        if (!self::user_has_access(null, $media_id)) {
             wp_die('You do not have permission to download this file.', 'Access Denied', array('response' => 403));
         }
         
@@ -122,7 +135,7 @@ class FMM_Access_Control {
         }
         
         // Check access
-        if (!self::user_has_access()) {
+        if (!self::user_has_access(null, $media_id)) {
             wp_die('You do not have permission to view this file.', 'Access Denied', array('response' => 403));
         }
         

@@ -3,7 +3,7 @@
  * Plugin Name: Family Media Manager
  * Plugin URI: https://bob490.co.uk
  * Description: Secure video download and streaming plugin for family members with email-based invitations
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Bob
  * Author URI: https://bob490.co.uk
  * License: GPL v2 or later
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('FMM_VERSION', '1.0.0');
+define('FMM_VERSION', '1.1.0');
 define('FMM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('FMM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('FMM_UPLOAD_DIR', 'family-videos');
