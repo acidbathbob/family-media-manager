@@ -1,0 +1,48 @@
+/* Family Media Manager - Frontend Styles */
+/* Styles are primarily inline in templates for simplicity */
+/* Add custom styles here if needed */
+
+.fmm-error {
+    background: #ffebee;
+    color: #c62828;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+
+.fmm-success {
+    background: #e8f5e9;
+    color: #2e7d32;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+
+.button {
+    display: inline-block;
+    padding: 8px 16px;
+    background: #0073aa;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.button:hover {
+    background: #005a87;
+    color: #fff;
+}
+
+.button-primary {
+    background: #0073aa;
+}
+
+.button-secondary {
+    background: #6c757d;
+}
+
+.button-secondary:hover {
+    background: #5a6268;
+}

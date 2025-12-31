@@ -1,0 +1,22 @@
+# WordPress specific
+*.log
+.htaccess
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Temporary files
+*.tmp
