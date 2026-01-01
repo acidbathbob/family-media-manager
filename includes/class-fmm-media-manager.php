@@ -167,14 +167,14 @@ class FMM_Media_Manager {
             @exec($ffmpeg_cmd, $output, $return_var);
             
             if ($return_var === 0 && file_exists($thumbnail_path)) {
-                return $thumbnail_path;
+                return $thumbnail_filename;
             }
         }
         
         // Fallback: create a placeholder thumbnail
         self::create_placeholder_thumbnail($thumbnail_path);
         
-        return $thumbnail_path;
+        return $thumbnail_filename;
     }
     
     /**

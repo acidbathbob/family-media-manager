@@ -71,7 +71,7 @@ add_action('wp_enqueue_scripts', 'fmm_enqueue_scripts');
 // Enqueue admin scripts and styles
 function fmm_enqueue_admin_scripts($hook) {
     // Only load on our plugin pages
-    if (strpos($hook, 'family-media-manager') === false) {
+    if (strpos($hook, 'family-media-manager') === false && strpos($hook, 'fmm-') === false) {
         return;
     }
     

@@ -50,6 +50,67 @@ if (!defined('ABSPATH')) {
     </div>
     
     <div class="fmm-admin-card">
+        <h2>Import Existing Videos from Server</h2>
+        <p class="description">Select videos that are already on the server but not yet in the media library.</p>
+        <form id="fmm-import-videos-form">
+            <?php
+            // Get videos from filesystem
+            $video_dir = wp_upload_dir()['basedir'] . '/family-videos/';
+            $filesystem_files = glob($video_dir . '*.{mp4,mov,avi,webm,ogg}', GLOB_BRACE);
+            
+            // Get videos already in database
+            global $wpdb;
+            $db_files = $wpdb->get_col("SELECT filename FROM {$wpdb->prefix}fmm_media");
+            
+            // Find videos not yet imported
+            $unimported = array();
+            foreach ($filesystem_files as $file) {
+                $filename = basename($file);
+                if (!in_array($filename, $db_files)) {
+                    $unimported[] = array(
+                        'filename' => $filename,
+                        'filepath' => $file,
+                        'size' => filesize($file)
+                    );
+                }
+            }
+            
+            if (empty($unimported)): ?>
+                <p><em>All videos from the server are already in the media library.</em></p>
+            <?php else: ?>
+                <table class="widefat" style="margin-bottom: 15px;">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"><input type="checkbox" id="select-all-videos"></th>
+                            <th>Filename</th>
+                            <th>Size</th>
+                            <th>Category</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($unimported as $video): ?>
+                            <tr>
+                                <td><input type="checkbox" name="import_videos[]" value="<?php echo esc_attr($video['filename']); ?>"></td>
+                                <td><?php echo esc_html($video['filename']); ?></td>
+                                <td><?php echo FMM_Frontend::format_filesize($video['size']); ?></td>
+                                <td>
+                                    <select name="category_<?php echo esc_attr($video['filename']); ?>">
+                                        <option value="">— Select Category —</option>
+                                        <?php foreach ($categories as $cat): ?>
+                                            <option value="<?php echo esc_attr($cat->id); ?>"><?php echo esc_html($cat->name); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <button type="submit" class="button button-primary">Import Selected Videos</button>
+            <?php endif; ?>
+        </form>
+    </div>
+    
+    <div class="fmm-admin-card">
         <h2>All Videos (<?php echo count($media); ?>)</h2>
         
         <?php if (empty($media)): ?>
@@ -112,6 +173,16 @@ if (!defined('ABSPATH')) {
                             <td><?php echo intval($video->download_count); ?></td>
                             <td><?php echo esc_html(date('M j, Y', strtotime($video->upload_date))); ?></td>
                             <td>
+                                <select class="fmm-change-category" data-media-id="<?php echo esc_attr($video->id); ?>" style="max-width: 150px; margin-bottom: 5px;">
+                                    <option value="">— Set Category —</option>
+                                    <?php foreach ($categories as $cat): ?>
+                                        <option value="<?php echo esc_attr($cat->id); ?>" 
+                                                <?php selected($video->category_id, $cat->id); ?>>
+                                            <?php echo esc_html($cat->name); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <br>
                                 <a href="<?php echo esc_url(FMM_Access_Control::get_stream_url($video->id)); ?>" 
                                    target="_blank" 
                                    class="button button-small">
@@ -172,6 +243,49 @@ jQuery(document).ready(function($) {
             error: function() {
                 $('#upload-progress').html('<span style="color: #c62828;">✗ Upload failed</span>');
                 $('button[type="submit"]').prop('disabled', false);
+            }
+        });
+    });
+    
+    // Handle select all checkbox
+    $('#select-all-videos').on('change', function() {
+        $('input[name="import_videos[]"]').prop('checked', $(this).is(':checked'));
+    });
+    
+    // Handle import form
+    $('#fmm-import-videos-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        var formData = $(this).serializeArray();
+        formData.push({name: 'action', value: 'fmm_import_videos'});
+        formData.push({name: 'nonce', value: fmm_admin_ajax.nonce});
+        
+        $.post(fmm_admin_ajax.ajax_url, formData, function(response) {
+            if (response.success) {
+                alert('Videos imported successfully!\n\n' + response.data.message);
+                location.reload();
+            } else {
+                alert('Error: ' + response.data);
+            }
+        });
+    });
+    
+    // Handle category change
+    $('.fmm-change-category').on('change', function() {
+        var mediaId = $(this).data('media-id');
+        var categoryId = $(this).val();
+        
+        $.post(fmm_admin_ajax.ajax_url, {
+            action: 'fmm_update_video',
+            nonce: fmm_admin_ajax.nonce,
+            media_id: mediaId,
+            category_id: categoryId
+        }, function(response) {
+            if (response.success) {
+                alert('Category updated successfully!');
+                location.reload();
+            } else {
+                alert('Error: ' + response.data);
             }
         });
     });
