@@ -9,11 +9,44 @@ if (!defined('ABSPATH')) {
 
 class FMM_Admin {
     
-    public static function init() {
+  public static function init() {
         add_action('admin_menu', array(__CLASS__, 'add_admin_menu'));
+        add_action('admin_enqueue_scripts', array(__CLASS__, 'enqueue_admin_scripts'));
         add_action('wp_ajax_fmm_create_category', array(__CLASS__, 'ajax_create_category'));
         add_action('wp_ajax_fmm_grant_permission', array(__CLASS__, 'ajax_grant_permission'));
         add_action('wp_ajax_fmm_revoke_permission', array(__CLASS__, 'ajax_revoke_permission'));
+    }
+	/**
+ * Enqueue admin scripts and styles
+ */
+public static function enqueue_admin_scripts($hook) {
+    // Only load on our plugin pages
+    if (strpos($hook, 'family-media-manager') === false && strpos($hook, 'fmm-') === false) {
+        return;
+    }
+    
+    // Enqueue admin CSS
+    wp_enqueue_style(
+        'fmm-admin-css',
+        plugins_url('assets/css/admin.css', dirname(__FILE__)),
+        array(),
+        '1.1.0'
+    );
+    
+    // Enqueue admin JS
+    wp_enqueue_script(
+        'fmm-admin-js',
+        plugins_url('assets/js/admin.js', dirname(__FILE__)),
+        array('jquery'),
+        '1.1.0',
+        true
+    );
+    
+    // Localize script with AJAX variables
+    wp_localize_script('fmm-admin-js', 'fmm_admin_ajax', array(
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce('fmm_admin_nonce')
+    ));
     }
     
     /**
