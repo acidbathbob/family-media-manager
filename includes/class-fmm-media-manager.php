@@ -1,6 +1,12 @@
 <?php
 /**
- * Media Manager class for handling video files
+ * Media Manager Class - UPDATED VERSION
+ * 
+ * Enhanced with:
+ * - Improved thumbnail URL generation
+ * - Server file browser
+ * - Bulk import functionality
+ * - Better error handling
  */
 
 if (!defined('ABSPATH')) {
@@ -9,16 +15,20 @@ if (!defined('ABSPATH')) {
 
 class FMM_Media_Manager {
     
+    /**
+     * Initialize the media manager
+     */
     public static function init() {
+        // AJAX handlers
         add_action('wp_ajax_fmm_upload_video', array(__CLASS__, 'ajax_upload_video'));
         add_action('wp_ajax_fmm_delete_video', array(__CLASS__, 'ajax_delete_video'));
         add_action('wp_ajax_fmm_update_video', array(__CLASS__, 'ajax_update_video'));
         add_action('wp_ajax_fmm_search_videos', array(__CLASS__, 'ajax_search_videos'));
-        add_action('wp_ajax_nopriv_fmm_search_videos', array(__CLASS__, 'ajax_search_videos'));
+        add_action('wp_ajax_fmm_import_server_files', array(__CLASS__, 'ajax_import_server_files'));
     }
     
     /**
-     * Get all media files
+     * Get media files
      */
     public static function get_media($args = array()) {
         global $wpdb;
@@ -29,7 +39,7 @@ class FMM_Media_Manager {
             'search' => '',
             'orderby' => 'upload_date',
             'order' => 'DESC',
-            'limit' => -1,
+            'limit' => 0,
             'offset' => 0
         );
         
@@ -79,6 +89,18 @@ class FMM_Media_Manager {
             "SELECT * FROM $table WHERE id = %d",
             $id
         ));
+    }
+    
+    /**
+     * Get thumbnail URL from filesystem path
+     */
+    public static function get_thumbnail_url($thumbnail_path) {
+        if (empty($thumbnail_path) || !file_exists($thumbnail_path)) {
+            return false;
+        }
+        
+        $upload_dir = wp_upload_dir();
+        return str_replace($upload_dir['basedir'], $upload_dir['baseurl'], $thumbnail_path);
     }
     
     /**
@@ -139,10 +161,127 @@ class FMM_Media_Manager {
         
         if (!$inserted) {
             unlink($file_path);
+            if ($thumbnail && file_exists($thumbnail)) {
+                unlink($thumbnail);
+            }
             return new WP_Error('db_error', 'Failed to save file information');
         }
         
         return $wpdb->insert_id;
+    }
+    
+    /**
+     * Import existing video from server
+     */
+    public static function import_video($filepath, $title = null, $description = '', $category_id = null) {
+        if (!file_exists($filepath)) {
+            return new WP_Error('file_not_found', 'Video file not found on server');
+        }
+        
+        $filename = basename($filepath);
+        
+        // Check if already imported
+        global $wpdb;
+        $table = $wpdb->prefix . 'fmm_media';
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table WHERE filename = %s OR filepath = %s",
+            $filename,
+            $filepath
+        ));
+        
+        if ($exists > 0) {
+            return new WP_Error('already_exists', 'This video has already been imported');
+        }
+        
+        // Generate title if not provided
+        if (empty($title)) {
+            $path_parts = pathinfo($filename);
+            $title = ucwords(str_replace(array('-', '_'), ' ', $path_parts['filename']));
+        }
+        
+        // Generate thumbnail
+        $thumbnail = self::generate_thumbnail($filepath, $filename);
+        
+        // Get file info
+        $filesize = filesize($filepath);
+        $duration = self::get_video_duration($filepath);
+        
+        // Insert into database
+        $inserted = $wpdb->insert($table, array(
+            'filename' => $filename,
+            'filepath' => $filepath,
+            'title' => $title,
+            'description' => $description,
+            'category_id' => $category_id,
+            'filesize' => $filesize,
+            'duration' => $duration,
+            'thumbnail' => $thumbnail,
+            'uploaded_by' => get_current_user_id(),
+            'upload_date' => current_time('mysql')
+        ));
+        
+        if (!$inserted) {
+            if ($thumbnail && file_exists($thumbnail)) {
+                unlink($thumbnail);
+            }
+            return new WP_Error('db_error', 'Failed to save file information');
+        }
+        
+        return $wpdb->insert_id;
+    }
+    
+    /**
+     * Scan server for video files
+     */
+    public static function scan_server_videos($search = '') {
+        $upload_dir = wp_upload_dir();
+        $base_dir = $upload_dir['basedir'] . '/' . FMM_UPLOAD_DIR;
+        
+        if (!is_dir($base_dir)) {
+            return array();
+        }
+        
+        $found_videos = array();
+        $video_extensions = array('mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv');
+        
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($base_dir, RecursiveDirectoryIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::SELF_FIRST
+            );
+            
+            foreach ($iterator as $file) {
+                if ($file->isFile()) {
+                    $ext = strtolower($file->getExtension());
+                    if (in_array($ext, $video_extensions)) {
+                        // Skip thumbnails directory
+                        if (strpos($file->getPathname(), '/thumbnails/') === false) {
+                            $filename = $file->getFilename();
+                            
+                            // Apply search filter
+                            if (empty($search) || stripos($filename, $search) !== false) {
+                                $found_videos[] = array(
+                                    'path' => $file->getPathname(),
+                                    'filename' => $filename,
+                                    'size' => $file->getSize(),
+                                    'modified' => $file->getMTime()
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Sort by modified date (newest first)
+            usort($found_videos, function($a, $b) {
+                return $b['modified'] - $a['modified'];
+            });
+            
+        } catch (Exception $e) {
+            error_log('FMM: Error scanning videos: ' . $e->getMessage());
+        }
+        
+        return $found_videos;
     }
     
     /**
@@ -152,14 +291,24 @@ class FMM_Media_Manager {
         $upload_dir = wp_upload_dir();
         $thumbnails_dir = $upload_dir['basedir'] . '/' . FMM_UPLOAD_DIR . '/thumbnails';
         
+        // Create thumbnails directory if it doesn't exist
+        if (!file_exists($thumbnails_dir)) {
+            wp_mkdir_p($thumbnails_dir);
+        }
+        
         $path_parts = pathinfo($filename);
         $thumbnail_filename = $path_parts['filename'] . '.jpg';
         $thumbnail_path = $thumbnails_dir . '/' . $thumbnail_filename;
         
+        // If thumbnail already exists, return it
+        if (file_exists($thumbnail_path)) {
+            return $thumbnail_path;
+        }
+        
         // Try using ffmpeg if available
         if (function_exists('exec')) {
             $ffmpeg_cmd = sprintf(
-                'ffmpeg -i %s -ss 00:00:01.000 -vframes 1 %s 2>&1',
+                'ffmpeg -i %s -ss 00:00:01.000 -vframes 1 -vf scale=320:180 %s 2>&1',
                 escapeshellarg($video_path),
                 escapeshellarg($thumbnail_path)
             );
@@ -324,6 +473,48 @@ class FMM_Media_Manager {
         } else {
             wp_send_json_success(array('media_id' => $result));
         }
+    }
+    
+    /**
+     * AJAX handler for importing server files
+     */
+    public static function ajax_import_server_files() {
+        check_ajax_referer('fmm_admin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        if (!isset($_POST['filepaths']) || !is_array($_POST['filepaths'])) {
+            wp_send_json_error('No files selected');
+            return;
+        }
+        
+        $imported = 0;
+        $skipped = 0;
+        $errors = 0;
+        
+        foreach ($_POST['filepaths'] as $filepath) {
+            $filepath = sanitize_text_field($filepath);
+            $result = self::import_video($filepath);
+            
+            if (is_wp_error($result)) {
+                if ($result->get_error_code() === 'already_exists') {
+                    $skipped++;
+                } else {
+                    $errors++;
+                }
+            } else {
+                $imported++;
+            }
+        }
+        
+        wp_send_json_success(array(
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'errors' => $errors
+        ));
     }
     
     /**
