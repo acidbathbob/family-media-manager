@@ -15,6 +15,7 @@ class FMM_Admin {
         add_action('wp_ajax_fmm_create_category', array(__CLASS__, 'ajax_create_category'));
         add_action('wp_ajax_fmm_grant_permission', array(__CLASS__, 'ajax_grant_permission'));
         add_action('wp_ajax_fmm_revoke_permission', array(__CLASS__, 'ajax_revoke_permission'));
+        add_action('wp_ajax_fmm_import_videos', array(__CLASS__, 'ajax_import_videos'));
     }
 	/**
  * Enqueue admin scripts and styles
@@ -257,5 +258,62 @@ public static function enqueue_admin_scripts($hook) {
         } else {
             wp_send_json_error('Failed to revoke permission');
         }
+    }
+    
+    /**
+     * AJAX handler for importing existing videos
+     */
+    public static function ajax_import_videos() {
+        check_ajax_referer('fmm_admin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        if (empty($_POST['import_videos'])) {
+            wp_send_json_error('No videos selected');
+            return;
+        }
+        
+        $video_dir = wp_upload_dir()['basedir'] . '/family-videos/';
+        $imported = 0;
+        
+        foreach ($_POST['import_videos'] as $filename) {
+            $filepath = $video_dir . $filename;
+            
+            if (!file_exists($filepath)) {
+                continue;
+            }
+            
+            $category_key = 'category_' . $filename;
+            $category_id = isset($_POST[$category_key]) ? intval($_POST[$category_key]) : null;
+            
+            // Generate title from filename
+            $title = str_replace(['-', '_', '.mp4', '.mov', '.avi', '.webm', '.ogg'], [' ', ' ', '', '', '', '', ''], pathinfo($filename, PATHINFO_FILENAME));
+            $title = ucwords($title);
+            
+            // Insert into database
+            global $wpdb;
+            $table = $wpdb->prefix . 'fmm_media';
+            
+            $inserted = $wpdb->insert($table, array(
+                'filename' => $filename,
+                'filepath' => $filepath,
+                'title' => $title,
+                'category_id' => $category_id,
+                'filesize' => filesize($filepath),
+                'thumbnail' => 'video-placeholder.png',
+                'uploaded_by' => get_current_user_id()
+            ));
+            
+            if ($inserted) {
+                $imported++;
+            }
+        }
+        
+        wp_send_json_success(array(
+            'message' => "Imported {$imported} video(s) successfully!"
+        ));
     }
 }

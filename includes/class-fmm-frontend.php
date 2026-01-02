@@ -80,14 +80,14 @@ class FMM_Frontend {
     /**
      * Get thumbnail URL
      */
-    public static function get_thumbnail_url($thumbnail_path) {
-        if (!$thumbnail_path || !file_exists($thumbnail_path)) {
+    public static function get_thumbnail_url($thumbnail_filename) {
+        // If it's the placeholder, return the plugin URL
+        if ($thumbnail_filename === 'video-placeholder.png' || empty($thumbnail_filename)) {
             return FMM_PLUGIN_URL . 'assets/images/video-placeholder.png';
         }
         
+        // Otherwise build URL from filename
         $upload_dir = wp_upload_dir();
-        $thumbnail_url = str_replace($upload_dir['basedir'], $upload_dir['baseurl'], $thumbnail_path);
-        
-        return $thumbnail_url;
+        return $upload_dir['baseurl'] . '/family-videos/thumbnails/' . $thumbnail_filename;
     }
 }
