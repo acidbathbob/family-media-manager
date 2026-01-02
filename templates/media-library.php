@@ -235,14 +235,27 @@ $media = FMM_Media_Manager::get_media(array(
     font-size: 40px;
     font-weight: bold;
     cursor: pointer;
+    z-index: 10000;
 }
 #fmm-modal-video video {
     width: 100%;
     max-height: 80vh;
+    background: #000;
 }
 @media (max-width: 768px) {
     .fmm-media-grid {
         grid-template-columns: 1fr;
+    }
+    .fmm-modal-content {
+        width: 95%;
+        margin: 10% auto;
+    }
+    .fmm-modal-close {
+        right: 10px;
+        top: 10px;
+    }
+    #fmm-modal-video video {
+        max-height: 70vh;
     }
 }
 </style>
@@ -254,20 +267,72 @@ jQuery(document).ready(function($) {
         var videoUrl = $(this).attr('href');
         var videoId = $(this).data('video-id');
         
+        // Create video element with better mobile support
         $('#fmm-modal-video').html(
-            '<video controls autoplay>' +
+            '<video controls playsinline preload="metadata" style="width: 100%; max-height: 80vh;">' +
             '<source src="' + videoUrl + '" type="video/mp4">' +
             'Your browser does not support the video tag.' +
             '</video>'
         );
         
-        $('#fmm-video-modal').fadeIn();
+        $('#fmm-video-modal').fadeIn(function() {
+            // Add fullscreen button on mobile
+            if (window.innerWidth <= 768) {
+                var fullscreenBtn = $('<button class="fmm-fullscreen-btn" style="position: absolute; top: 10px; left: 10px; z-index: 10001; background: rgba(0,0,0,0.7); color: white; border: none; padding: 10px 15px; border-radius: 5px; font-size: 16px;">⛶ Fullscreen</button>');
+                $('#fmm-modal-video').prepend(fullscreenBtn);
+                
+                fullscreenBtn.on('click', function() {
+                    var video = $('#fmm-modal-video video')[0];
+                    if (video) {
+                        if (video.requestFullscreen) {
+                            video.requestFullscreen();
+                        } else if (video.webkitRequestFullscreen) {
+                            video.webkitRequestFullscreen();
+                        } else if (video.webkitEnterFullscreen) {
+                            video.webkitEnterFullscreen(); // iOS
+                        }
+                    }
+                });
+            }
+            
+            // Try to play after modal is shown (better for mobile)
+            var video = $('#fmm-modal-video video')[0];
+            if (video) {
+                // On mobile, go fullscreen automatically when video starts
+                if (window.innerWidth <= 768) {
+                    video.addEventListener('play', function() {
+                        if (video.webkitEnterFullscreen) {
+                            video.webkitEnterFullscreen(); // iOS
+                        } else if (video.requestFullscreen) {
+                            video.requestFullscreen();
+                        } else if (video.webkitRequestFullscreen) {
+                            video.webkitRequestFullscreen();
+                        }
+                    }, { once: true });
+                }
+                
+                video.play().catch(function(error) {
+                    console.log('Auto-play prevented:', error);
+                });
+            }
+        });
     });
     
     $('.fmm-modal-close, .fmm-modal').on('click', function(e) {
         if (e.target === this) {
+            var video = $('#fmm-modal-video video')[0];
+            if (video) {
+                video.pause();
+            }
             $('#fmm-video-modal').fadeOut();
             $('#fmm-modal-video').html('');
+        }
+    });
+    
+    // Close on escape key
+    $(document).on('keydown', function(e) {
+        if (e.key === 'Escape') {
+            $('.fmm-modal-close').click();
         }
     });
 });
